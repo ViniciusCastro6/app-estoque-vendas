@@ -1,0 +1,31 @@
+Tabela produtos
+Campo	Tipo
+id	INTEGER PK
+nome	TEXT
+categoria	TEXT
+preco_venda	REAL
+preco_compra	REAL
+quantidade	INTEGER
+
+Tabela clientes
+Campo	Tipo
+id	INTEGER PK
+nome	TEXT
+telefone	TEXT
+cpf	TEXT
+email	TEXT
+
+Tabela vendas
+Campo	Tipo	Descrição
+id	INTEGER PK	
+cliente_id	INTEGER FK → clientes(id)	
+total	REAL	Total da venda
+data	DATETIME	Data da venda
+
+Tabela itens_venda
+Campo	Tipo	Descrição
+id	INTEGER PK	
+venda_id	INTEGER FK → vendas(id)	
+produto_id	INTEGER FK → produtos(id)	
+quantidade	INTEGER	Quantidade vendida
+preco_unitario	REAL	Preço do produto na venda
