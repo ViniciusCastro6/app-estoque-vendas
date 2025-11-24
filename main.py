@@ -12,6 +12,7 @@ def main(page: ft.Page):
     page.theme = get_theme()
     page.bgcolor = DARK_BG
     page.padding = 0
+    page.window_icon = "icon.jpg"
     
     # Views
     product_view = ProductView()
@@ -54,7 +55,7 @@ def main(page: ft.Page):
         bgcolor=with_opacity(0.05, NEON_BLUE),
         padding=20,
         content=ft.Column([
-            ft.Text("NEXUS\nSTOCK", size=30, weight=ft.FontWeight.BOLD, color=NEON_BLUE, text_align=ft.TextAlign.CENTER),
+            ft.Text("Castro Mobile\nEstoque e Vendas", size=20, weight=ft.FontWeight.BOLD, color=NEON_BLUE, text_align=ft.TextAlign.CENTER),
             ft.Divider(color=NEON_BLUE),
             ft.Container(height=20),
             ft.ListTile(leading=ft.Icon(ft.Icons.DASHBOARD, color=NEON_BLUE), title=ft.Text("Dashboard", color=TEXT_COLOR), on_click=lambda e: change_view(e, "dashboard")),
@@ -78,4 +79,4 @@ def main(page: ft.Page):
     )
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.app(target=main, assets_dir="assets")

@@ -9,36 +9,229 @@ class ProductView(ft.Column):
         super().__init__()
         self.expand = True
         self.search_field = NeonTextField(label="Buscar Produto", on_change=self.search_products)
+        
+        # Filter Controls
+        self.category_filter = ft.Dropdown(label="Categoria", options=[], width=200, border_color=NEON_BLUE, text_style=ft.TextStyle(color=TEXT_COLOR), bgcolor=with_opacity(0.1, NEON_BLUE), on_change=self.apply_filters)
+        self.min_price = NeonTextField(label="Min R$", width=100, keyboard_type=ft.KeyboardType.NUMBER, on_change=self.apply_filters)
+        self.max_price = NeonTextField(label="Max R$", width=100, keyboard_type=ft.KeyboardType.NUMBER, on_change=self.apply_filters)
+        self.low_stock_filter = ft.Checkbox(label="Baixo Estoque", label_style=ft.TextStyle(color=TEXT_COLOR), on_change=self.apply_filters)
+        self.out_of_stock_filter = ft.Checkbox(label="Esgotado", label_style=ft.TextStyle(color=TEXT_COLOR), on_change=self.apply_filters)
+        self.best_sellers_filter = ft.Checkbox(label="Mais Vendidos", label_style=ft.TextStyle(color=TEXT_COLOR), on_change=self.apply_filters)
+        self.inactive_filter = ft.Checkbox(label="Inativos", label_style=ft.TextStyle(color=TEXT_COLOR), on_change=self.apply_filters)
+        
+        # Sorting Controls
+        self.sort_option = None # Default
+        self.sort_buttons = ft.Row([
+            ft.Text("Ordenar por:", color=NEON_BLUE),
+            NeonButton("A-Z", lambda e: self.set_sort("name_asc"), icon=ft.Icons.SORT_BY_ALPHA, width=100),
+            NeonButton("Preço", lambda e: self.set_sort("price_asc"), icon=ft.Icons.ATTACH_MONEY, width=100),
+            NeonButton("Estoque", lambda e: self.set_sort("stock_desc"), icon=ft.Icons.INVENTORY, width=110),
+            NeonButton("Recentes", lambda e: self.set_sort("date_desc"), icon=ft.Icons.NEW_RELEASES, width=120),
+        ], scroll=ft.ScrollMode.AUTO)
+
         self.products_list = ft.ListView(expand=True, spacing=10)
         self.controls = [
             PageHeader("Gerenciar Produtos"),
             ft.Row([self.search_field, NeonButton("Novo Produto", self.open_add_dialog, icon=ft.Icons.ADD)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.ExpansionTile(
+                title=ft.Text("Filtros Avançados", color=NEON_BLUE),
+                controls=[
+                    ft.Column([
+                        ft.Row([self.category_filter, self.min_price, self.max_price], wrap=True),
+                        ft.Row([self.low_stock_filter, self.out_of_stock_filter, self.best_sellers_filter, self.inactive_filter], wrap=True),
+                        ft.Divider(color=with_opacity(0.5, NEON_BLUE)),
+                        self.sort_buttons,
+                        ft.Container(height=10),
+                        NeonButton("Limpar Filtros", self.clear_filters, icon=ft.Icons.CLEAR_ALL)
+                    ], scroll=ft.ScrollMode.AUTO)
+                ]
+            ),
             ft.Divider(color=NEON_BLUE),
             self.products_list
         ]
         self.load_products()
 
+    def set_sort(self, sort_value):
+        self.sort_option = sort_value
+        self.load_products()
+
+    def clear_filters(self, e):
+        self.search_field.value = ""
+        self.category_filter.value = None
+        self.min_price.value = ""
+        self.max_price.value = ""
+        self.low_stock_filter.value = False
+        self.out_of_stock_filter.value = False
+        self.best_sellers_filter.value = False
+        self.inactive_filter.value = False
+        self.sort_option = None
+        self.update()
+        self.load_products()
+
+    def apply_filters(self, e):
+        self.load_products()
+
     def load_products(self, search=""):
         print("Carregando produtos...")
+        # Update categories dropdown
+        categories = get_unique_categories()
+        self.category_filter.options = [ft.dropdown.Option(c) for c in categories]
+        
         self.products_list.controls.clear()
-        produtos = get_produtos(search)
+        
+        # Get filter values
+        cat = self.category_filter.value
+        min_p = self.min_price.value
+        max_p = self.max_price.value
+        low_s = self.low_stock_filter.value
+        out_s = self.out_of_stock_filter.value
+        best_s = self.best_sellers_filter.value
+        show_inactive = self.inactive_filter.value
+        
+        # Determine inactive logic: if checked, show ALL (or maybe just inactive? User said "Filtrar por produtos inativos")
+        # Usually "Filter by inactive" means SHOW inactive. 
+        # If I want to show ONLY inactive, I might need a different logic.
+        # Let's assume:
+        # - Default: Active only
+        # - "Inativos" checked: Show Inactive (or All?)
+        # Let's implement: "Inativos" checked -> Show ONLY inactive (to act as a filter). 
+        # Wait, usually "Show Inactive" toggle means "Include Inactive". 
+        # But the user said "Filtrar por...", implying narrowing down.
+        # Let's make it a tri-state or just assume if checked, we show inactive. 
+        # Actually, let's stick to: If checked, show ONLY inactive. If unchecked, show ONLY active.
+        # Or maybe: If checked, show ALL. 
+        # Let's look at the user request: "Filtrar por produtos inativos". This sounds like "Show me the inactive ones".
+        # So:
+        # - Unchecked: Active Only (default)
+        # - Checked: Inactive Only
+        
+        inactive_mode = "only_inactive" if show_inactive else False
+
+        produtos = get_produtos(
+            search_term=self.search_field.value,
+            category=cat,
+            min_price=min_p,
+            max_price=max_p,
+            low_stock=low_s,
+            out_of_stock=out_s,
+            best_sellers=best_s,
+            show_inactive=inactive_mode,
+            sort_by=self.sort_option
+        )
+        
         print(f"Produtos encontrados: {len(produtos)}")
         for p in produtos:
+            status_color = TEXT_COLOR
+            if p['quantidade'] == 0:
+                status_color = NEON_RED
+            
+            name_style = ft.TextStyle(size=18, weight=ft.FontWeight.BOLD, color=NEON_BLUE)
+            if p['ativo'] == 0:
+                name_style.decoration = ft.TextDecoration.LINE_THROUGH
+                name_style.color = ft.Colors.GREY
+            
+            # Quick View Trigger (Clickable Card)
+            card_content = ft.Container(
+                content=ft.Row([
+                    ft.Column([
+                        ft.Text(p['nome'], style=name_style),
+                        ft.Text(f"Cat: {p['categoria']} | Qtd: {p['quantidade']}", color=status_color),
+                        ft.Text("INATIVO" if p['ativo'] == 0 else "ATIVO", size=10, color=ft.Colors.GREY if p['ativo'] == 0 else NEON_GREEN)
+                    ], expand=True),
+                    ft.Text(f"R$ {p['preco_venda']:.2f}", size=20, color=NEON_GREEN, weight=ft.FontWeight.BOLD),
+                    # Edit/Delete buttons moved to Quick View or kept here? 
+                    # User said "Ao clicar no card, abrir um popup". 
+                    # Keeping quick actions here is good UX, but let's make the whole card clickable for Quick View.
+                    # But if I click the buttons, it shouldn't open Quick View.
+                    # Flet's Container on_click covers everything unless children handle clicks.
+                    # So buttons will still work.
+                    ft.Row([
+                        ft.IconButton(ft.Icons.EDIT, icon_color=NEON_PURPLE, on_click=lambda e, id=p['id'], p_data=p: self.open_edit_dialog(id, p_data)),
+                        ft.IconButton(ft.Icons.DELETE, icon_color=ft.Colors.RED, on_click=lambda e, id=p['id']: self.delete_product(id)),
+                    ])
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                on_click=lambda e, p_data=p: self.open_quick_view(p_data)
+            )
+
             self.products_list.controls.append(
                 GlassCard(
-                    ft.Row([
-                        ft.Column([
-                            ft.Text(p['nome'], size=18, weight=ft.FontWeight.BOLD, color=NEON_BLUE),
-                            ft.Text(f"Cat: {p['categoria']} | Qtd: {p['quantidade']}", color=TEXT_COLOR),
-                        ], expand=True),
-                        ft.Text(f"R$ {p['preco_venda']:.2f}", size=20, color=NEON_GREEN, weight=ft.FontWeight.BOLD),
-                        ft.IconButton(ft.Icons.EDIT, icon_color=NEON_PURPLE, on_click=lambda e, id=p['id']: self.open_edit_dialog(id)),
-                        ft.IconButton(ft.Icons.DELETE, icon_color=ft.Colors.RED, on_click=lambda e, id=p['id']: self.delete_product(id)),
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                    card_content
                 )
             )
         if self.page:
             self.update()
+
+    def open_quick_view(self, p):
+        # p is a Row object from sqlite3, behaves like dict
+        
+        # Content for Quick View
+        # Foto (Placeholder if empty)
+        foto_url = p['foto'] if p['foto'] else "https://via.placeholder.com/150"
+        img = ft.Image(src=foto_url, width=150, height=150, fit=ft.ImageFit.COVER, border_radius=10)
+        
+        details = ft.Column([
+            ft.Text(p['nome'], size=24, weight=ft.FontWeight.BOLD, color=NEON_BLUE),
+            ft.Text(f"Categoria: {p['categoria']}", color=TEXT_COLOR),
+            ft.Text(f"Preço Venda: R$ {p['preco_venda']:.2f}", color=NEON_GREEN, size=18, weight=ft.FontWeight.BOLD),
+            ft.Text(f"Preço Compra: R$ {p['preco_compra']:.2f}", color=TEXT_COLOR),
+            ft.Text(f"Estoque: {p['quantidade']}", color=NEON_BLUE if p['quantidade'] > 5 else NEON_RED, weight=ft.FontWeight.BOLD),
+            ft.Divider(color=NEON_BLUE),
+            ft.Text(f"Código de Barras: {p['codigo_barras'] or 'N/A'}", color=TEXT_COLOR),
+            ft.Text(f"Fornecedor: {p['fornecedor'] or 'N/A'}", color=TEXT_COLOR),
+            ft.Text("Descrição:", color=NEON_PURPLE),
+            ft.Text(p['descricao'] or "Sem descrição.", color=TEXT_COLOR, italic=True),
+        ], expand=True, scroll=ft.ScrollMode.AUTO)
+        
+        content = ft.Row([
+            ft.Column([img], alignment=ft.MainAxisAlignment.START),
+            ft.VerticalDivider(width=20, color=with_opacity(0.2, NEON_BLUE)),
+            details
+        ], height=400, width=600)
+        
+        def close_dialog(e):
+            self.page.close(dialog)
+
+        dialog = ft.AlertDialog(
+            content=content,
+            actions=[
+                NeonButton("Editar", lambda e: [close_dialog(e), self.open_edit_dialog(p['id'], p)], icon=ft.Icons.EDIT),
+                NeonButton("Movimentações", lambda e: self.show_movements(p['id'], p['nome']), icon=ft.Icons.HISTORY),
+                ft.TextButton("Fechar", on_click=close_dialog)
+            ],
+            bgcolor=CARD_BG,
+            title=ft.Text("Detalhes do Produto", color=NEON_BLUE)
+        )
+        self.page.open(dialog)
+
+    def show_movements(self, product_id, product_name):
+        movements = get_produto_movimentacoes(product_id)
+        
+        list_view = ft.ListView(expand=True, spacing=10)
+        if not movements:
+            list_view.controls.append(ft.Text("Nenhuma movimentação registrada.", color=TEXT_COLOR))
+        else:
+            for m in movements:
+                # m: (data, id, nome_cliente, quantidade, preco_unitario, status)
+                list_view.controls.append(
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Text(f"{m[0]}", color=TEXT_COLOR, size=12),
+                            ft.Text(f"Venda #{m[1]} - {m[2] or 'Cliente não ident.'}", color=NEON_BLUE),
+                            ft.Text(f"Qtd: {m[3]}", color=TEXT_COLOR),
+                            ft.Text(f"R$ {m[4]:.2f}", color=NEON_GREEN),
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        padding=10,
+                        border=ft.border.only(bottom=ft.BorderSide(1, with_opacity(0.2, NEON_BLUE)))
+                    )
+                )
+
+        dialog = ft.AlertDialog(
+            title=ft.Text(f"Movimentações: {product_name}", color=NEON_BLUE),
+            content=ft.Container(list_view, height=300, width=500),
+            actions=[ft.TextButton("Fechar", on_click=lambda e: self.page.close(dialog))],
+            bgcolor=CARD_BG
+        )
+        self.page.open(dialog)
 
     def search_products(self, e):
         self.load_products(e.control.value)
@@ -51,19 +244,28 @@ class ProductView(ft.Column):
         print("Abrindo diálogo de novo produto...")
         self.open_product_dialog()
 
-    def open_edit_dialog(self, id):
-        # Simplificação: Buscar dados do produto pelo ID (não implementado no DB helper individualmente, mas ok)
-        # Para simplificar, vou recarregar a lista e filtrar aqui ou adicionar get_produto_by_id no db
-        # Vou assumir criação de novo por enquanto para não complicar demais o snippet
-        self.open_product_dialog(id)
+    def open_edit_dialog(self, id, p_data=None):
+        # Se p_data for passado, usamos ele. Se não, idealmente buscaríamos do DB.
+        # Como simplificação, vou assumir que p_data é passado ou recarregar tudo.
+        # Mas para editar corretamente, preciso dos dados.
+        # Vou modificar a chamada no load_products para passar o objeto produto.
+        self.open_product_dialog(id, p_data)
 
-    def open_product_dialog(self, product_id=None):
+    def open_product_dialog(self, product_id=None, product_data=None):
         # Dialog fields
-        nome = NeonTextField(label="Nome")
-        categoria = NeonTextField(label="Categoria")
-        preco_venda = NeonTextField(label="Preço Venda", keyboard_type=ft.KeyboardType.NUMBER)
-        preco_compra = NeonTextField(label="Preço Compra", keyboard_type=ft.KeyboardType.NUMBER)
-        quantidade = NeonTextField(label="Quantidade", keyboard_type=ft.KeyboardType.NUMBER)
+        nome = NeonTextField(label="Nome", value=product_data['nome'] if product_data else "")
+        categoria = NeonTextField(label="Categoria", value=product_data['categoria'] if product_data else "", expand=True)
+        preco_venda = NeonTextField(label="Preço Venda", keyboard_type=ft.KeyboardType.NUMBER, value=str(product_data['preco_venda']) if product_data else "", expand=True)
+        preco_compra = NeonTextField(label="Preço Compra", keyboard_type=ft.KeyboardType.NUMBER, value=str(product_data['preco_compra']) if product_data and product_data['preco_compra'] else "", expand=True)
+        quantidade = NeonTextField(label="Quantidade", keyboard_type=ft.KeyboardType.NUMBER, value=str(product_data['quantidade']) if product_data else "", expand=True)
+        
+        # New Fields
+        codigo_barras = NeonTextField(label="Cód. Barras", value=product_data['codigo_barras'] if product_data and product_data['codigo_barras'] else "", expand=True)
+        fornecedor = NeonTextField(label="Fornecedor", value=product_data['fornecedor'] if product_data and product_data['fornecedor'] else "")
+        foto = NeonTextField(label="URL Foto", value=product_data['foto'] if product_data and product_data['foto'] else "")
+        descricao = NeonTextField(label="Descrição", multiline=True, value=product_data['descricao'] if product_data and product_data['descricao'] else "")
+        
+        ativo_switch = ft.Switch(label="Ativo", value=bool(product_data['ativo']) if product_data else True, active_color=NEON_GREEN)
 
         def save(e):
             print("Tentando salvar produto...")
@@ -71,11 +273,13 @@ class ProductView(ft.Column):
                 pv = float(preco_venda.value)
                 pc = float(preco_compra.value) if preco_compra.value else 0.0
                 qtd = int(quantidade.value)
+                ativo = 1 if ativo_switch.value else 0
+                
                 if product_id:
-                    update_produto(product_id, nome.value, categoria.value, pv, pc, qtd)
+                    update_produto(product_id, nome.value, categoria.value, pv, pc, qtd, ativo, foto.value, codigo_barras.value, descricao.value, fornecedor.value)
                 else:
-                    add_produto(nome.value, categoria.value, pv, pc, qtd)
-                    add_produto(nome.value, categoria.value, pv, pc, qtd)
+                    add_produto(nome.value, categoria.value, pv, pc, qtd, ativo, foto.value, codigo_barras.value, descricao.value, fornecedor.value)
+                
                 self.page.close(dialog)
                 self.page.update()
                 self.load_products()
@@ -83,18 +287,25 @@ class ProductView(ft.Column):
                 # Show error (snack bar would be good)
                 pass
 
+        content_col = ft.Column([
+            nome, 
+            ft.Row([categoria, codigo_barras]),
+            ft.Row([preco_venda, preco_compra, quantidade]),
+            fornecedor,
+            foto,
+            descricao,
+            ativo_switch
+        ], tight=True, scroll=ft.ScrollMode.AUTO)
+
         dialog = ft.AlertDialog(
-            title=ft.Text("Produto", color=NEON_BLUE),
-            content=ft.Column([nome, categoria, preco_venda, preco_compra, quantidade], tight=True),
+            title=ft.Text("Editar Produto" if product_id else "Novo Produto", color=NEON_BLUE),
+            content=ft.Container(content_col, width=600, height=500),
             actions=[
                 NeonButton("Salvar", save),
                 ft.TextButton("Cancelar", on_click=lambda e: self.page.close(dialog))
             ],
             bgcolor=CARD_BG
         )
-        # self.page.dialog = dialog
-        # dialog.open = True
-        # self.page.update()
         self.page.open(dialog)
 
 class ClientView(ft.Column):

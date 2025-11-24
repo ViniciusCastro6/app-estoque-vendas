@@ -28,8 +28,8 @@ def get_theme():
     )
 
 class NeonButton(ft.ElevatedButton):
-    def __init__(self, text, on_click, icon=None, color=NEON_BLUE):
-        super().__init__(text=text, on_click=on_click)
+    def __init__(self, text, on_click, icon=None, color=NEON_BLUE, **kwargs):
+        super().__init__(text=text, on_click=on_click, **kwargs)
         # self.text = text # Already handled by super
         # self.on_click = on_click # Already handled by super
         self.icon = icon
